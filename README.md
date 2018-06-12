@@ -3,7 +3,7 @@ Unreal Plugins, Enable to capture RGB,Mask,Depth Image and Save Raw data as Imag
 
 # Usage:
 ### Include this plugin to your project
-* For example: MyProject/Plugins/VisionLogger
+* For example: MyProject/Plugins/UVisionLogger
 ### Drag the plugin actor into Editor
 * Input **UVisionLogger** in search classes and drag the actor into Editor
 * Customize the plugin in **UVisionLogger/Details/Vision Settings**
