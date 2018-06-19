@@ -43,8 +43,8 @@ public class VisionLogger : ModuleRules
 				"SlateCore",
                 "RHI",
                 "RenderCore",
-                "UnrealEd",
-                "libmongo"
+                "UnrealEd"
+        
                
 				// ... add private dependencies that you statically link with here ...	
 			}

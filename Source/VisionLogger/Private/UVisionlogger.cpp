@@ -14,8 +14,8 @@ AUVisionlogger::AUVisionlogger()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	ColorsUsed = 0;
-	Width = 960;
-	Height = 540;
+	Width = 480;
+	Height = 300;
 	FieldOfView = 90.0;
 	FrameRate = 0;
 	MongoIp = TEXT("127.0.0.1");
@@ -24,6 +24,8 @@ AUVisionlogger::AUVisionlogger()
 	FDateTime now = FDateTime::UtcNow();
 	MongoCollectionName = FString::FromInt(now.GetYear()) + "_" + FString::FromInt(now.GetMonth()) + "_" + FString::FromInt(now.GetDay())
 							+ "_" + FString::FromInt(now.GetHour()) + "_" + FString::FromInt(now.GetMinute());
+
+	bImageSameSize = false;
 	bCaptureColorImage = false;
 	bCaptureMaskImage = false;
 	bCaptureDepthImage = false;
@@ -34,6 +36,13 @@ AUVisionlogger::AUVisionlogger()
 	bColorSave = false;
 	bMaskSave = false;
 	bDepthSave = false;
+
+	ColorImgCaptureComp = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("ColorCapture"));
+	ColorImgCaptureComp->SetupAttachment(RootComponent);
+	ColorImgCaptureComp->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+	ColorImgCaptureComp->TextureTarget = CreateDefaultSubobject<UTextureRenderTarget2D>(TEXT("ColorTarget"));
+	ColorImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+	ColorImgCaptureComp->FOVAngle = FieldOfView;
 
 	// Create the vision capture components
 	MaskImgCaptureComp = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("MaskCapture"));
@@ -66,15 +75,13 @@ AUVisionlogger::AUVisionlogger()
 		UE_LOG(LogTemp, Warning, TEXT("Could not load material for depth."));
 	}
 
+	ColorImgCaptureComp->SetHiddenInGame(true);
+	ColorImgCaptureComp->Deactivate();
 	MaskImgCaptureComp->SetHiddenInGame(true);
 	MaskImgCaptureComp->Deactivate();
 	DepthImgCaptureComp->SetHiddenInGame(true);
 	DepthImgCaptureComp->Deactivate();
 
-	// Initializing buffers for reading images from the GPU
-	
-	MaskImage.AddZeroed(Width*Height);
-	DepthImage.AddZeroed(Width*Height);
 
 	// Setting flags for each camera
 	ShowFlagsVertexColor(MaskImgCaptureComp->ShowFlags);
@@ -87,23 +94,64 @@ AUVisionlogger::AUVisionlogger()
 void AUVisionlogger::BeginPlay()
 {
 	Super::BeginPlay();
+	FTimerHandle TimerHandle;
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &AUVisionlogger::Initial, 1.0f , false);
+	
+}
 
+// Called every frame
+void AUVisionlogger::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	FVector Position = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraLocation();
+	FRotator Rotation = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraRotation();
+	ColorImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+	MaskImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+	DepthImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+
+}
+
+void AUVisionlogger::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	//StopAsyncTask(ColorAsyncWorker);
+}
+
+void AUVisionlogger::Initial()
+{
 	if (bSaveAsImage)
 	{
 		static IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
 		ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::JPEG);
 	}
-	
-	if (bCaptureColorImage) {
-		// intialize color image from current game viewport
-		GetWorld()->GetGameViewport()->GetEngineShowFlags()->SetMotionBlur(false);
-		ColorImgCaptureComp = GetWorld()->GetGameViewport()->Viewport;
-		ColorWidth = ColorImgCaptureComp->GetRenderTargetTextureSizeXY().X;
-		ColorHeight = ColorImgCaptureComp->GetRenderTargetTextureSizeXY().Y;
-		ColorImage.AddZeroed(ColorWidth*ColorHeight);
+
+	if (bImageSameSize)
+	{
+		ColorViewport = GetWorld()->GetGameViewport()->Viewport;
+		Width = ColorViewport->GetRenderTargetTextureSizeXY().X;
+		Height = ColorViewport->GetRenderTargetTextureSizeXY().Y;
+		ColorImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+		MaskImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+		DepthImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+
 	}
-	
-	
+	ColorImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+	MaskImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+	DepthImgCaptureComp->TextureTarget->InitAutoFormat(Width, Height);
+	// Initializing buffers for reading images from the GPU
+	ColorImage.AddZeroed(Width*Height);
+	MaskImage.AddZeroed(Width*Height);
+	DepthImage.AddZeroed(Width*Height);
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Image Size: x: %i, y: %i"), Width, Height));
+
+	if (bCaptureColorImage) {
+		
+		ColorImgCaptureComp->TextureTarget->TargetGamma = 1;	
+		ColorImgCaptureComp->SetHiddenInGame(false);
+		ColorImgCaptureComp->Activate();
+	}
+
+
 	if (bCaptureMaskImage)
 	{
 		if (ColorAllObjects()) {
@@ -122,20 +170,6 @@ void AUVisionlogger::BeginPlay()
 
 	// Call the timer 
 	SetFramerate(FrameRate);
-}
-
-// Called every frame
-void AUVisionlogger::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-	
-
-}
-
-void AUVisionlogger::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-	//StopAsyncTask(ColorAsyncWorker);
 }
 
 void AUVisionlogger::SetFramerate(const float NewFramerate)
@@ -191,16 +225,13 @@ void AUVisionlogger::StopAsyncTask(FAsyncTask<RawDataAsyncWorker>* AsyncWorker)
 void AUVisionlogger::TimerTick()
 {
 	FDateTime Stamp = FDateTime::UtcNow();
-	FVector Position = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraLocation();
-	FRotator Rotation = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraRotation();
-	MaskImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
-	DepthImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+	
 	if (bCaptureColorImage)
 	{		
 		if (!bColorFirsttick && ColorPixelFence.IsFenceComplete()) {
 			if (bSaveAsImage) {
 				
-				InitAsyncTask(ColorAsyncWorker, ColorImage, Stamp, TEXT("COLOR"), ColorWidth, ColorHeight);
+				InitAsyncTask(ColorAsyncWorker, ColorImage, Stamp, TEXT("COLOR"), Width, Height);
 				bColorSave = true;
 			}
 			StopAsyncTask(ColorAsyncWorker);
@@ -305,8 +336,10 @@ void AUVisionlogger::ProcessColorImg()
 {
 	FReadSurfaceDataFlags ReadSurfaceDataFlags;
 	ReadSurfaceDataFlags.SetLinearToGamma(false);
-	ColorImgCaptureComp->Draw();
-	ReadPixels(ColorImgCaptureComp, ColorImage, ReadSurfaceDataFlags);	
+	//ColorViewport->Draw();
+	//ReadPixels(ColorImgCaptureComp, ColorImage, ReadSurfaceDataFlags);	
+	FTextureRenderTargetResource* ColorRenderResource = ColorImgCaptureComp->TextureTarget->GameThread_GetRenderTargetResource();
+	ReadPixels(ColorRenderResource, ColorImage);
 	ColorPixelFence.BeginFence();
 }
 
@@ -325,7 +358,7 @@ void AUVisionlogger::ProcessDepthImg()
 	DepthPixelFence.BeginFence();
 }
 
-void AUVisionlogger::ReadPixels(FViewport *& viewport, TArray<FColor>& OutImageData, FReadSurfaceDataFlags InFlags, FIntRect InRect)
+void AUVisionlogger::ReadPixels(FSceneViewport *& viewport, TArray<FColor>& OutImageData, FReadSurfaceDataFlags InFlags, FIntRect InRect)
 {
 	
 	if (InRect == FIntRect(0, 0, 0, 0))
@@ -410,7 +443,7 @@ bool AUVisionlogger::ColorAllObjects()
 	{
 
 		FString ActorName = ActItr->GetName();
-		GEditor->SelectActor(*ActItr, true, true);
+		//GEditor->SelectActor(*ActItr, true, true);
 		FString CategoryName = ActorName.Left(7);
 		if (!ObjectCategory.Contains(CategoryName)) {
 			++NumberOfActors;

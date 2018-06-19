@@ -30,7 +30,11 @@ TStatId RawDataAsyncWorker::GetStatId() const
 void RawDataAsyncWorker::DoWork()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Task Begin"));
-	SaveImage(Image, ImageWrapper, TimeStamp, ImageName, Width, Height);
+	if (Width > 0 && Height > 0)
+	{
+		SaveImage(Image, ImageWrapper, TimeStamp, ImageName, Width, Height);
+	}
+	
 }
 
 void RawDataAsyncWorker::SetLogToImage()

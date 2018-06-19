@@ -8,6 +8,7 @@
 #include "Runtime/Core/Public/Async/AsyncWork.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "StaticMeshResources.h"
+#include "Runtime/Engine/Public/Slate/SceneViewport.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UVisionlogger.generated.h"
@@ -21,6 +22,10 @@ class VISIONLOGGER_API AUVisionlogger : public AActor
 public:	
 	// Sets default values for this actor's properties
 	AUVisionlogger();
+
+	// Set Caputure Image Size the same as Viewport Size
+	UPROPERTY(EditAnywhere, Category = "Vision Settings")
+		bool bImageSameSize;
 
 	// Camera Width
 	UPROPERTY(EditAnywhere, Category = "Vision Settings")
@@ -94,6 +99,9 @@ public:
 	// Called when the game ends
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	// initialize Componets
+	void Initial();
+
 	// Change the framerate on the fly
 	void SetFramerate(const float NewFramerate);
 
@@ -109,8 +117,9 @@ public:
 
 private:
 	// Camera capture component for color images (RGB)
-	FViewport* ColorImgCaptureComp;
-
+	//FViewport* ColorImgCaptureComp;
+	FViewport* ColorViewport;
+	USceneCaptureComponent2D* ColorImgCaptureComp;
 	// Camera capture component for depth image
 	USceneCaptureComponent2D* DepthImgCaptureComp;
 
@@ -183,7 +192,7 @@ private:
 	void ProcessDepthImg();
 
 	// Read Raw data from viewport
-	void ReadPixels(FViewport* &viewport, TArray< FColor >& OutImageData, FReadSurfaceDataFlags InFlags = FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX), FIntRect InRect = FIntRect(0, 0, 0, 0));
+	void ReadPixels(FSceneViewport* &viewport, TArray< FColor >& OutImageData, FReadSurfaceDataFlags InFlags = FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX), FIntRect InRect = FIntRect(0, 0, 0, 0));
 
 	// Read Raw data from USceneCaptureComponent2D
 	void ReadPixels(FTextureRenderTargetResource*& RenderResource, TArray< FColor >& OutImageData, FReadSurfaceDataFlags InFlags = FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX), FIntRect InRect = FIntRect(0, 0, 0, 0));
