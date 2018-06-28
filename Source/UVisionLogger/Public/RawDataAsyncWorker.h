@@ -1,4 +1,4 @@
-// Copyright 2018, Institute for Artificial Intelligence - University of Bremen
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 /**
  * 
  */
-class VISIONLOGGER_API RawDataAsyncWorker : public FNonAbandonableTask
+class UVISIONLOGGER_API RawDataAsyncWorker : public FNonAbandonableTask
 {
 private:
 	int Width;
@@ -25,5 +25,5 @@ public:
 	FORCEINLINE TStatId GetStatId() const;
 	void DoWork();
 	void SetLogToImage();
-	void SaveImage(TArray<FColor>&image, TSharedPtr<IImageWrapper> &ImageWrapper, FDateTime Stamp, FString ImageName, int Width,int Height);
+	void SaveImage(TArray<FColor>&image, TSharedPtr<IImageWrapper> &ImageWrapper, FDateTime Stamp, FString ImageName, int Width, int Height);
 };

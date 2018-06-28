@@ -2,15 +2,15 @@
 
 using UnrealBuildTool;
 
-public class VisionLogger : ModuleRules
+public class UVisionLogger : ModuleRules
 {
-	public VisionLogger(ReadOnlyTargetRules Target) : base(Target)
+	public UVisionLogger(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
 		PublicIncludePaths.AddRange(
 			new string[] {
-				"VisionLogger/Public"
+				"UVisionLogger/Public"
 				// ... add public include paths required here ...
 			}
 			);
@@ -18,7 +18,7 @@ public class VisionLogger : ModuleRules
 		
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				"VisionLogger/Private",
+				"UVisionLogger/Private",
 				// ... add other private include paths required here ...
 			}
 			);
@@ -36,7 +36,6 @@ public class VisionLogger : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-                "Core",
 				"CoreUObject",
 				"Engine",
 				"Slate",
@@ -44,8 +43,6 @@ public class VisionLogger : ModuleRules
                 "RHI",
                 "RenderCore",
                 "UnrealEd"
-        
-               
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

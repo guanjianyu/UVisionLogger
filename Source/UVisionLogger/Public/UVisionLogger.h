@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "ModuleManager.h"
 
-class FVisionLoggerModule : public IModuleInterface
+class FUVisionLoggerModule : public IModuleInterface
 {
 public:
 

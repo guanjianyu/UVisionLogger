@@ -1,20 +1,19 @@
-// Copyright 2018, Institute for Artificial Intelligence - University of Bremen
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "RawDataAsyncWorker.h"
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Core/Public/GenericPlatform/GenericPlatformFile.h"
 #include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
 
-
 RawDataAsyncWorker::RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<IImageWrapper>& ImageWrapperRef, FDateTime Stamp, FString Name, int Width_init, int Height_init)
 {
 	Width = Width_init;
 	Height = Height_init;
-	TimeStamp= Stamp;
+	TimeStamp = Stamp;
 	ImageName = Name;
-	ImageWrapper= ImageWrapperRef;
-    Image= Image_init;
-	
+	ImageWrapper = ImageWrapperRef;
+	Image = Image_init;
+
 }
 
 RawDataAsyncWorker::~RawDataAsyncWorker()
@@ -34,7 +33,7 @@ void RawDataAsyncWorker::DoWork()
 	{
 		SaveImage(Image, ImageWrapper, TimeStamp, ImageName, Width, Height);
 	}
-	
+
 }
 
 void RawDataAsyncWorker::SetLogToImage()
@@ -66,3 +65,4 @@ void RawDataAsyncWorker::SaveImage(TArray<FColor>& image, TSharedPtr<IImageWrapp
 	FString AbsolutePath = FileDir + "/" + FileName;
 	FFileHelper::SaveArrayToFile(ImgData, *AbsolutePath);
 }
+
