@@ -2,7 +2,6 @@
 
 #include "UVCamera.h"
 #include "ConstructorHelpers.h"
-#include "Engine.h"
 #include <algorithm>
 #include <sstream>
 #include <chrono>
@@ -16,6 +15,7 @@ AUVCamera::AUVCamera()
 	Height = 300;
 	FieldOfView = 90.0;
 	FrameRate = 0;
+	CameraId = TEXT("Cam01");
 	FDateTime now = FDateTime::UtcNow();
 
 	bImageSameSize = false;
@@ -23,6 +23,7 @@ AUVCamera::AUVCamera()
 	bInitialAsyncTask = true;
 	bColorFirsttick = true;
 	bColorSave = false;
+	bFirstPersonView = false;
 
 	ColorImgCaptureComp = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("ColorCapture"));
 	ColorImgCaptureComp->SetupAttachment(RootComponent);
@@ -49,9 +50,12 @@ void AUVCamera::BeginPlay()
 void AUVCamera::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	FVector Position = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraLocation();
-	FRotator Rotation = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraRotation();
-	ColorImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+	if (bFirstPersonView) {
+		FVector Position = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraLocation();
+		FRotator Rotation = GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraRotation();
+		ColorImgCaptureComp->SetWorldLocationAndRotation(Position, Rotation);
+	}
+	
 
 }
 
@@ -152,7 +156,7 @@ void AUVCamera::TimerTick()
 		if (!bColorFirsttick && ColorPixelFence.IsFenceComplete()) {
 			if (bSaveAsImage) {
 
-				InitAsyncTask(ColorAsyncWorker, ColorImage, Stamp, TEXT("COLOR"), Width, Height);
+				InitAsyncTask(ColorAsyncWorker, ColorImage, Stamp,CameraId+TEXT("_COLOR_"), Width, Height);
 				bColorSave = true;
 			}
 			StopAsyncTask(ColorAsyncWorker);
@@ -182,9 +186,9 @@ void AUVCamera::ProcessColorImg()
 	}
 	if (bCaptureScencComponent)
 	{
-		ReadPixels(ColorRenderResource, ColorImage);
+		ReadPixels(ColorRenderResource, ColorImage,ReadSurfaceDataFlags);
 	}
-
+	
 	ColorPixelFence.BeginFence();
 }
 

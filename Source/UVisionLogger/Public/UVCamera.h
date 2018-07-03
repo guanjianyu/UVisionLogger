@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Camera/CameraActor.h"
+#include "Engine.h"
 #include "RawDataAsyncWorker.h"
 #include "Runtime/Core/Public/Async/AsyncWork.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -19,6 +20,12 @@ class UVISIONLOGGER_API AUVCamera : public ACameraActor
 	GENERATED_BODY()
 public:
 	AUVCamera();
+	//Set UVCamera id
+	UPROPERTY(EditAnyWhere, Category = "Vision Settings")
+		FString CameraId;
+	//Set UVCamera follow first player view
+	UPROPERTY(EditAnyWhere, Category = "Vision Settings")
+		bool bFirstPersonView;
 
 	// Set Caputure Image Size the same as Viewport Size
 	UPROPERTY(EditAnywhere, Category = "Vision Settings")
@@ -42,15 +49,16 @@ public:
 	// Capture Color image
 	UPROPERTY(EditAnywhere, Category = "Vision Settings|Capture Mode")
 		bool bCaptureColorImage;
-	// Save data as image
-	UPROPERTY(EditAnywhere, Category = "Vision Settings|Capture Mode|Save Mode", meta = (EditCondition = bCaptureColorImage))
-		bool bSaveAsImage;
 
 	// CaptureViewport
 	UPROPERTY(EditAnywhere, Category = "Vision Settings|Capture Mode|Color Mode", meta = (EditCondition = bCaptureColorImage))
 		bool bCaptureViewport;
 	UPROPERTY(EditAnywhere, Category = "Vision Settings|Capture Mode|Color Mode", meta = (EditCondition = bCaptureColorImage))
 		bool bCaptureScencComponent;
+
+	// Save data as image
+	UPROPERTY(EditAnywhere, Category = "Vision Settings|Capture Mode|Save Mode")
+		bool bSaveAsImage;
 
 	// Intial Asynctask
 	bool bInitialAsyncTask;
