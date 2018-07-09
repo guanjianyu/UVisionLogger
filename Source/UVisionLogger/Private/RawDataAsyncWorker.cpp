@@ -5,7 +5,8 @@
 #include "Runtime/Core/Public/GenericPlatform/GenericPlatformFile.h"
 #include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
 
-RawDataAsyncWorker::RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<IImageWrapper>& ImageWrapperRef, FDateTime Stamp, FString Name, int Width_init, int Height_init)
+
+RawDataAsyncWorker::RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<IImageWrapper>& ImageWrapperRef, FDateTime Stamp, FString Name, int Width_init, int Height_init, FString ImageEpisode, FString CameraId)
 {
 	Width = Width_init;
 	Height = Height_init;
@@ -13,6 +14,8 @@ RawDataAsyncWorker::RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<II
 	ImageName = Name;
 	ImageWrapper = ImageWrapperRef;
 	Image = Image_init;
+	Episode = ImageEpisode;
+	CameraName = CameraId;
 
 }
 
@@ -31,7 +34,7 @@ void RawDataAsyncWorker::DoWork()
 	UE_LOG(LogTemp, Warning, TEXT("Task Begin"));
 	if (Width > 0 && Height > 0)
 	{
-		SaveImage(Image, ImageWrapper, TimeStamp, ImageName, Width, Height);
+		SaveImage(Image, ImageWrapper, TimeStamp, ImageName, Width, Height,Episode,CameraName);
 	}
 
 }
@@ -40,7 +43,7 @@ void RawDataAsyncWorker::SetLogToImage()
 {
 }
 
-void RawDataAsyncWorker::SaveImage(TArray<FColor>& image, TSharedPtr<IImageWrapper>& ImageWrapper, FDateTime Stamp, FString ImageName, int Width, int Height)
+void RawDataAsyncWorker::SaveImage(TArray<FColor>& image, TSharedPtr<IImageWrapper>& ImageWrapper, FDateTime Stamp, FString ImageName, int Width, int Height,FString Episode, FString CameraId)
 {
 	// get the time stamp
 	FString TimeStamp = FString::FromInt(Stamp.GetYear()) + "_" + FString::FromInt(Stamp.GetMonth()) + "_" + FString::FromInt(Stamp.GetDay())
@@ -56,13 +59,14 @@ void RawDataAsyncWorker::SaveImage(TArray<FColor>& image, TSharedPtr<IImageWrapp
 
 	//save image in local disk as image
 	FString FileName = ImageName + TimeStamp + ".jpg";
-	FString FileDir = FPaths::ProjectSavedDir() + "/" + "viewport";
+	FString FileDir = FPaths::ProjectDir() + TEXT("/Vision Logger/")+ Episode + "/" + CameraId + "/"+ TEXT("viewport/");
+	FPaths::RemoveDuplicateSlashes(FileDir);
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	if (!PlatformFile.DirectoryExists(*FileDir)) {
 		PlatformFile.CreateDirectoryTree(*FileDir);
 
 	}
-	FString AbsolutePath = FileDir + "/" + FileName;
+	FString AbsolutePath = FileDir + FileName;
 	FFileHelper::SaveArrayToFile(ImgData, *AbsolutePath);
 }
 

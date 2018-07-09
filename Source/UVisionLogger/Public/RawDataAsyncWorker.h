@@ -17,13 +17,15 @@ private:
 	int Height;
 	FDateTime TimeStamp;
 	FString ImageName;
+	FString Episode;
+	FString CameraName;
 	TSharedPtr<IImageWrapper> ImageWrapper;
 	TArray<FColor> Image;
 public:
-	RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<IImageWrapper>& ImageWrapperRef, FDateTime Stamp, FString Name, int Width_init, int Height_init);
+	RawDataAsyncWorker(TArray<FColor>& Image_init, TSharedPtr<IImageWrapper>& ImageWrapperRef, FDateTime Stamp, FString Name, int Width_init, int Height_init, FString ImageEpisode,FString CameraId);
 	~RawDataAsyncWorker();
 	FORCEINLINE TStatId GetStatId() const;
 	void DoWork();
 	void SetLogToImage();
-	void SaveImage(TArray<FColor>&image, TSharedPtr<IImageWrapper> &ImageWrapper, FDateTime Stamp, FString ImageName, int Width, int Height);
+	void SaveImage(TArray<FColor>&image, TSharedPtr<IImageWrapper> &ImageWrapper, FDateTime Stamp, FString ImageName, int Width, int Height, FString Episode, FString CameraId);
 };

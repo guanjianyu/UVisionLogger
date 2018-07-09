@@ -16,7 +16,15 @@ AUVCamera::AUVCamera()
 	FieldOfView = 90.0;
 	FrameRate = 0;
 	CameraId = TEXT("Cam01");
+	MongoIp = TEXT("127.0.0.1");
+	MongoPort = 27017;
+	MongoDBName = TEXT("VisionLogger");
 	FDateTime now = FDateTime::UtcNow();
+	MongoCollectionName = FString::FromInt(now.GetYear()) + "_" + FString::FromInt(now.GetMonth()) + "_" + FString::FromInt(now.GetDay())
+		+ "_" + FString::FromInt(now.GetHour());
+	
+	
+
 
 	bImageSameSize = false;
 	bCaptureColorImage = false;
@@ -35,6 +43,15 @@ AUVCamera::AUVCamera()
 	ColorImgCaptureComp->SetHiddenInGame(true);
 	ColorImgCaptureComp->Deactivate();
 
+}
+
+AUVCamera::~AUVCamera() 
+{
+	
+	if (FileHandle)
+	{
+		delete FileHandle;
+	}
 }
 
 // Called when the game starts or when spawned
@@ -63,16 +80,34 @@ void AUVCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	//StopAsyncTask(ColorAsyncWorker);
+	if (bConnectionMongo) {
+		mongoc_collection_destroy(collection);
+		mongoc_database_destroy(database);
+		mongoc_client_destroy(client);
+		mongoc_cleanup();
+		bConnectionMongo = false;
+	}
+	if (bSaveAsBsonFile) {
+		if (FileHandle) {
+			FileHandle->Write((uint8*)buf, (int64)buflen);
+		}
+	}
+	
 }
 
 void AUVCamera::Initial()
 {
-	if (bSaveAsImage)
-	{
-		static IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
-		ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::JPEG);
-	}
+	static IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
+	ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::JPEG);
 
+	if (bSaveInMongoDB) {
+		bConnectionMongo=ConnectMongo(MongoIp, MongoPort, MongoDBName, MongoCollectionName);
+	}
+	if (bSaveAsBsonFile) {
+		//create bson write buffer
+		writer = bson_writer_new(&buf, &buflen, 0, bson_realloc_ctx, NULL);
+		SetFileHandle();
+	}
 	if (bImageSameSize)
 	{
 		ColorViewport = GetWorld()->GetGameViewport()->Viewport;
@@ -113,7 +148,7 @@ void AUVCamera::SetFramerate(const float NewFramerate)
 void AUVCamera::InitAsyncTask(FAsyncTask<RawDataAsyncWorker>* AsyncWorker, TArray<FColor>& image, FDateTime Stamp, FString Name, int Width, int Height)
 {
 
-	AsyncWorker = new FAsyncTask<RawDataAsyncWorker>(image, ImageWrapper, Stamp, Name, Width, Height);
+	AsyncWorker = new FAsyncTask<RawDataAsyncWorker>(image, ImageWrapper, Stamp, Name, Width, Height,MongoCollectionName,CameraId);
 	AsyncWorker->StartBackgroundTask();
 	AsyncWorker->EnsureCompletion();
 
@@ -159,6 +194,15 @@ void AUVCamera::TimerTick()
 				InitAsyncTask(ColorAsyncWorker, ColorImage, Stamp,CameraId+TEXT("_COLOR_"), Width, Height);
 				bColorSave = true;
 			}
+			if (bConnectionMongo) {
+				SaveImageInMongo(Stamp);
+
+				bColorSave = true;
+			}
+			if (bSaveAsBsonFile) {
+				SaveImageAsBson(Stamp);
+				bColorSave = true;
+			}
 			StopAsyncTask(ColorAsyncWorker);
 		}
 		if (bColorFirsttick)
@@ -182,7 +226,8 @@ void AUVCamera::ProcessColorImg()
 	FTextureRenderTargetResource* ColorRenderResource = ColorImgCaptureComp->TextureTarget->GameThread_GetRenderTargetResource();
 	if (bCaptureViewport) {
 		ColorViewport->Draw();
-		ColorViewport->ReadPixels(ColorImage);
+		//ColorViewport->ReadPixels(ColorImage);
+		ReadPixels(ColorViewport, ColorImage);
 	}
 	if (bCaptureScencComponent)
 	{
@@ -190,6 +235,44 @@ void AUVCamera::ProcessColorImg()
 	}
 	
 	ColorPixelFence.BeginFence();
+}
+
+void AUVCamera::ReadPixels(FViewport *& viewport, TArray<FColor>& OutImageData, FReadSurfaceDataFlags InFlags, FIntRect InRect)
+{
+	if (InRect == FIntRect(0, 0, 0, 0))
+	{
+		InRect = FIntRect(0, 0, viewport->GetSizeXY().X, viewport->GetSizeXY().Y);
+	}
+
+	// Read the render target surface data back.	
+	struct FReadSurfaceContext
+	{
+		FRenderTarget* SrcRenderTarget;
+		TArray<FColor>* OutData;
+		FIntRect Rect;
+		FReadSurfaceDataFlags Flags;
+	};
+
+	OutImageData.Reset();
+	FReadSurfaceContext ReadSurfaceContext =
+	{
+		viewport,
+		&OutImageData,
+		InRect,
+		InFlags
+	};
+
+	ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
+		ReadSurfaceCommand,
+		FReadSurfaceContext, Context, ReadSurfaceContext,
+		{
+			RHICmdList.ReadSurfaceData(
+				Context.SrcRenderTarget->GetRenderTargetTexture(),
+				Context.Rect,
+				*Context.OutData,
+				Context.Flags
+			);
+		});
 }
 
 
@@ -230,4 +313,132 @@ void AUVCamera::ReadPixels(FTextureRenderTargetResource *& RenderResource, TArra
 				Context.Flags
 			);
 		});
+}
+bool AUVCamera::ConnectMongo(FString & MongoIp, int & MongoPort, FString & MongoDBName, FString & MongoCollection)
+{
+	FString Furi_str = TEXT("mongodb://") + MongoIp + TEXT(":") + FString::FromInt(MongoPort);
+	std::string uri_str(TCHAR_TO_UTF8(*Furi_str));
+	std::string database_name(TCHAR_TO_UTF8(*MongoDBName));
+	std::string collection_name(TCHAR_TO_UTF8(*MongoCollection));
+
+	//Required to initialize libmongoc's internals
+	mongoc_init();
+
+	//create a new client instance
+	client = mongoc_client_new(uri_str.c_str());
+
+	//Register the application name so we can track it in the profile logs on the server
+	mongoc_client_set_appname(client, "Mongo_data");
+
+	//Get a handle on the database and collection 
+	database = mongoc_client_get_database(client, database_name.c_str());
+	collection = mongoc_client_get_collection(client, database_name.c_str(), collection_name.c_str());
+
+	//connect mongo database
+	if (client) {
+
+		UE_LOG(LogTemp, Warning, TEXT("Mongo Database has been connected"));
+		return true;
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("Database connection failed"));
+		return false;
+	}
+	return false;
+}
+
+void AUVCamera::SaveImageInMongo(FDateTime Stamp)
+{
+	FString TimeStamp = FString::FromInt(Stamp.GetYear()) + "_" + FString::FromInt(Stamp.GetMonth()) + "_" + FString::FromInt(Stamp.GetDay())
+		+ "_" + FString::FromInt(Stamp.GetHour()) + "_" + FString::FromInt(Stamp.GetMinute()) + "_" + FString::FromInt(Stamp.GetSecond()) + "_" +
+		FString::FromInt(Stamp.GetMillisecond());
+
+	bson_t *doc;
+	doc = bson_new();
+	BSON_APPEND_UTF8(doc, "Camera_Id", TCHAR_TO_UTF8(*CameraId));
+	BSON_APPEND_UTF8(doc, "Time_Stamp", TCHAR_TO_UTF8(*TimeStamp));
+
+	bson_t child1;
+	BSON_APPEND_DOCUMENT_BEGIN(doc, "resolution", &child1);
+	BSON_APPEND_INT32(&child1, "X", Height);
+	BSON_APPEND_INT32(&child1, "Y", Width);
+	bson_append_document_end(doc, &child1);
+
+	if (bCaptureColorImage) {
+		TArray<uint8>ImgData;
+		ImgData.AddZeroed(Width*Height);
+		ImageWrapper->SetRaw(ColorImage.GetData(), ColorImage.GetAllocatedSize(), Width, Height, ERGBFormat::BGRA, 8);
+		ImgData = ImageWrapper->GetCompressed();
+
+		uint8_t* imagedata = new uint8_t[ImgData.Num()];
+
+		for (size_t i = 0; i < ImgData.Num(); i++) {
+			*(imagedata + i) = ImgData[i];
+		}
+		bson_t child2;
+		BSON_APPEND_DOCUMENT_BEGIN(doc, "Color Image", &child2);
+		BSON_APPEND_UTF8(&child2, "type", TCHAR_TO_UTF8(TEXT("RGBD")));
+		BSON_APPEND_BINARY(&child2, "Color_Image_Data", BSON_SUBTYPE_BINARY, imagedata, ImgData.Num());
+		bson_append_document_end(doc, &child2);
+		delete[] imagedata;
+	}
+	bson_error_t error;
+	if (!mongoc_collection_insert_one(collection, doc, NULL, NULL, &error)) {
+		fprintf(stderr, "%s\n", error.message);
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("Save Image In MongoDB"));
+	}
+	bson_destroy(doc);
+}
+
+void AUVCamera::SaveImageAsBson(FDateTime Stamp)
+{
+	bson_t *doc;
+	TArray<uint8_t>Fbuf;
+	bool RBuf;
+	FString TimeStamp = FString::FromInt(Stamp.GetYear()) + "_" + FString::FromInt(Stamp.GetMonth()) + "_" + FString::FromInt(Stamp.GetDay())
+		+ "_" + FString::FromInt(Stamp.GetHour()) + "_" + FString::FromInt(Stamp.GetMinute()) + "_" + FString::FromInt(Stamp.GetSecond()) + "_" +
+		FString::FromInt(Stamp.GetMillisecond());
+	RBuf = bson_writer_begin(writer, &doc);
+	BSON_APPEND_UTF8(doc, "Camera_Id", TCHAR_TO_UTF8(*CameraId));
+	BSON_APPEND_UTF8(doc, "Time_Stamp", TCHAR_TO_UTF8(*TimeStamp));
+	bson_t child1;
+	BSON_APPEND_DOCUMENT_BEGIN(doc, "resolution", &child1);
+	BSON_APPEND_INT32(&child1, "X", Height);
+	BSON_APPEND_INT32(&child1, "Y", Width);
+	bson_append_document_end(doc, &child1);
+
+
+	if (bCaptureColorImage) {
+		TArray<uint8>ImgData;
+		ImgData.AddZeroed(Width*Height);
+		ImageWrapper->SetRaw(ColorImage.GetData(), ColorImage.GetAllocatedSize(), Width, Height, ERGBFormat::BGRA, 8);
+		ImgData = ImageWrapper->GetCompressed();
+
+		uint8_t* imagedata = new uint8_t[ImgData.Num()];
+
+		for (size_t i = 0; i < ImgData.Num(); i++) {
+			*(imagedata + i) = ImgData[i];
+		}
+		bson_t child2;
+		BSON_APPEND_DOCUMENT_BEGIN(doc, "Color Image", &child2);
+		BSON_APPEND_UTF8(&child2, "type", TCHAR_TO_UTF8(TEXT("RGBD")));
+		BSON_APPEND_BINARY(&child2, "Color_Image_Data", BSON_SUBTYPE_BINARY, imagedata, ImgData.Num());
+		bson_append_document_end(doc, &child2);
+		delete[] imagedata;
+	}
+	bson_writer_end(writer);
+}
+
+void AUVCamera::SetFileHandle()
+{
+	const FString Filename =  CameraId+"_"+MongoCollectionName + TEXT(".bson");
+	FString EpisodesDirPath = FPaths::ProjectDir() + TEXT("/Vision Logger/") + MongoCollectionName+ "/"+ CameraId+"/"+ TEXT("/Bson File/");
+	FPaths::RemoveDuplicateSlashes(EpisodesDirPath);
+	const FString FilePath = EpisodesDirPath + Filename;
+
+	// Create logging directory path and the filehandle
+	FPlatformFileManager::Get().GetPlatformFile().CreateDirectoryTree(*EpisodesDirPath);
+	FileHandle = FPlatformFileManager::Get().GetPlatformFile().OpenWrite(*FilePath, true);
 }
